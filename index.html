@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECG Digitizer Viewer</title>
+
+</head>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --nav-bg: #0d1b2a;
+  --nav-text: #e0e1dd;
+  --nav-accent: #4a90d9;
+  --bg: #f0f2f6;
+  --card-bg: #ffffff;
+  --text: #1c1e26;
+  --text-secondary: #6c7280;
+  --border: #e0e4e8;
+  --primary: #4a90d9;
+  --primary-hover: #357abd;
+  --info-border: #8ab4f8; --info-bg: #dff0fe; --info-text: #174ea6;
+  --success-border: #84c98e; --success-bg: #d4edda; --success-text: #155724;
+  --warning-border: #ffc107; --warning-bg: #fff3cd; --warning-text: #856404;
+  --error-border: #f5a3a8; --error-bg: #f8d7da; --error-text: #721c24;
+}
+
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.5;
+}
+
+#app { max-width: 920px; margin: 0 auto; padding: 0 1rem 2rem; }
+
+/* Nav */
+#navbar {
+  background: var(--nav-bg); color: var(--nav-text); padding: 0.65rem 1.25rem;
+  display: flex; align-items: center; gap: 0.75rem;
+  border-radius: 0 0 10px 10px; margin: 0 -1rem 1.25rem;
+}
+.nav-brand { display: flex; align-items: center; gap: 0.5rem; font-size: 1.1rem; font-weight: 700; color: #fff; }
+.nav-brand svg { color: var(--nav-accent); }
+.nav-subtitle { font-size: 0.78rem; color: rgba(224,225,221,0.55); margin-left: auto; }
+
+/* Card */
+.card {
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
+  padding: 1.25rem 1.5rem; margin-bottom: 1rem;
+}
+.card-title { font-size: 1.15rem; font-weight: 600; margin-bottom: 0.75rem; }
+
+/* Drop zone */
+.drop-zone {
+  border: 2px dashed var(--border); border-radius: 10px; padding: 2rem 1rem;
+  text-align: center; cursor: pointer; transition: border-color .2s, background .2s;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: var(--primary); background: #f5f9ff; }
+.drop-zone svg { margin-bottom: 0.4rem; }
+.drop-zone p { font-size: 0.95rem; margin-bottom: 0.2rem; }
+.drop-zone .hint { font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 0.6rem; }
+.btn-outline {
+  padding: 0.4rem 1.25rem; border: 1px solid var(--primary); color: var(--primary);
+  background: transparent; border-radius: 6px; font-size: 0.9rem; cursor: pointer; transition: .2s;
+}
+.btn-outline:hover { background: var(--primary); color: #fff; }
+
+.file-info-row {
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0 0; font-weight: 500;
+}
+.remove-btn { background: none; border: none; font-size: 1.3rem; cursor: pointer; color: var(--text-secondary); line-height: 1; }
+.remove-btn:hover { color: var(--error-text); }
+
+#preview-box { margin-top: 0.75rem; }
+#preview-img { max-height: 300px; width: 100%; object-fit: contain; border-radius: 8px; border: 1px solid var(--border); }
+
+/* Button */
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.55rem 1.5rem; background: var(--primary); color: #fff;
+  border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer;
+}
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-secondary {
+  padding: 0.5rem 1.25rem; background: #f0f2f6; color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; font-size: 0.95rem; cursor: pointer;
+}
+.btn-secondary:hover { background: #e4e7ed; }
+
+.spinner { width: 18px; height: 18px; border: 2.5px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.hidden { display: none !important; }
+
+/* Alerts */
+.alert { padding: 0.7rem 1rem; border-radius: 8px; border: 1px solid; font-size: 0.92rem; margin-bottom: 0.75rem; }
+.alert-info { background: var(--info-bg); border-color: var(--info-border); color: var(--info-text); }
+.alert-success { background: var(--success-bg); border-color: var(--success-border); color: var(--success-text); }
+.alert-warning { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning-text); }
+.alert-error { background: var(--error-bg); border-color: var(--error-border); color: var(--error-text); }
+
+/* Plot */
+.plot-wrap { width: 100%; overflow-x: auto; }
+#ecg-plot { width: 100%; height: auto; display: block; }
+
+/* Summary */
+.summary-text { font-size: 0.92rem; margin-bottom: 0.15rem; }
+.summary-text strong { font-weight: 600; }
+.caption-text { font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 0.9rem; }
+
+/* Metrics */
+.metrics-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 0.65rem; margin-bottom: 0.4rem;
+}
+.metric-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem 0.75rem; text-align: center; }
+.metric-label { font-size: 0.75rem; color: var(--text-secondary); }
+.metric-value { font-size: 1.2rem; font-weight: 700; }
+.metric-caption { font-size: 0.7rem; color: var(--text-secondary); }
+
+/* Details/expander */
+.details-panel { margin-top: 0.75rem; border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.9rem; background: #fafbfc; }
+.details-panel summary { cursor: pointer; font-weight: 600; font-size: 0.92rem; }
+.details-panel summary:hover { color: var(--primary); }
+.details-panel[open] { padding-bottom: 0.8rem; }
+
+/* Per-lead table */
+.lead-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-top: 0.5rem; }
+.lead-table th { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 2px solid var(--border); font-weight: 600; }
+.lead-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border); }
+.lead-table tr:nth-child(even) { background: #f8f9fa; }
+
+/* Report */
+#report-body { font-size: 0.92rem; }
+#report-body h2 { font-size: 1.1rem; margin: 0.75rem 0 0.3rem; }
+#report-body h3 { font-size: 0.95rem; margin: 0.6rem 0 0.3rem; }
+#report-body table { width: 100%; border-collapse: collapse; margin: 0.4rem 0; font-size: 0.88rem; }
+#report-body th { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 2px solid var(--border); font-weight: 600; }
+#report-body td { padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--border); }
+#report-body hr { border: none; border-top: 1px solid var(--border); margin: 0.75rem 0; }
+#report-body ul { padding-left: 1.2rem; margin: 0.4rem 0; }
+#report-body li { margin-bottom: 0.2rem; }
+#report-body .report-note { font-size: 0.8rem; color: var(--text-secondary); font-style: italic; }
+#report-actions { margin-top: 0.75rem; }
+
+/* Ecgtizer log */
+#log-stdout { font-size: 0.78rem; max-height: 180px; overflow-y: auto; background: #f5f6f8; padding: 0.6rem; border-radius: 6px; white-space: pre-wrap; word-break: break-all; margin-top: 0.4rem; }
+#log-stderr { font-size: 0.78rem; max-height: 120px; overflow-y: auto; background: var(--error-bg); color: var(--error-text); padding: 0.6rem; border-radius: 6px; white-space: pre-wrap; word-break: break-all; margin-top: 0.3rem; }
+
+/* Footer */
+footer { text-align: center; margin-top: 1.5rem; color: var(--text-secondary); font-size: 0.78rem; }
+
+/* Toast */
+#toast-container { position: fixed; top: 1rem; right: 1rem; z-index: 9999; display: flex; flex-direction: column; gap: 0.4rem; }
+.toast { padding: 0.65rem 1rem; border-radius: 8px; border: 1px solid; font-size: 0.88rem; box-shadow: 0 4px 12px rgba(0,0,0,0.1); animation: slideIn .25s ease-out; max-width: 380px; }
+.toast-error { background: var(--error-bg); border-color: var(--error-border); color: var(--error-text); }
+.toast-success { background: var(--success-bg); border-color: var(--success-border); color: var(--success-text); }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+@media (max-width: 600px) {
+  #app { padding: 0 0.5rem 1rem; }
+  #navbar { margin: 0 -0.5rem 0.75rem; padding: 0.5rem 0.75rem; }
+  .nav-subtitle { display: none; }
+  .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+</style>
+<body>
+
+<div id="app">
+  <!-- Navbar -->
+  <nav id="navbar">
+    <div class="nav-brand">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      <span>ECG Digitizer Viewer</span>
+    </div>
+    <span class="nav-subtitle">Medical ECG Analysis</span>
+  </nav>
+
+  <main id="content">
+    <!-- Upload Card -->
+    <section class="card">
+      <h2 class="card-title">Upload ECG Image</h2>
+      <div id="drop-zone" class="drop-zone">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#4A90D9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <p>Drag &amp; drop or click to browse</p>
+        <p class="hint">PNG, JPG, JPEG, or PDF</p>
+        <input type="file" id="file-input" accept=".png,.jpg,.jpeg,.pdf" hidden>
+        <button class="btn-outline" id="browse-btn">Browse Files</button>
+      </div>
+      <div id="file-info" class="file-info-row hidden">
+        <span id="file-name"></span>
+        <button id="remove-btn" class="remove-btn">&times;</button>
+      </div>
+      <div id="preview-box" class="hidden">
+        <img id="preview-img" alt="Preview">
+      </div>
+    </section>
+
+    <!-- Analyze Button -->
+    <section id="action-section" class="card hidden">
+      <button id="analyze-btn" class="btn-primary">
+        <span id="btn-text">Analyze ECG</span>
+        <span id="spinner" class="spinner hidden"></span>
+      </button>
+    </section>
+
+    <!-- Alert Area -->
+    <div id="alerts"></div>
+
+    <!-- Results Dashboard -->
+    <div id="results" class="hidden">
+
+      <!-- Plot -->
+      <section class="card" id="plot-card">
+        <h2 class="card-title">Digitized Signal</h2>
+        <div class="plot-wrap">
+          <img id="ecg-plot" alt="ECG plot">
+        </div>
+      </section>
+
+      <!-- Peak Detection -->
+      <section class="card" id="peak-card">
+        <h2 class="card-title">Peak Detection</h2>
+        <div id="peak-summary" class="summary-text"></div>
+        <p id="peak-caption" class="caption-text"></p>
+
+        <div id="metrics-grid" class="metrics-grid"></div>
+
+        <!-- Per-lead expander -->
+        <details id="per-lead-details" class="details-panel">
+          <summary>Per-lead R-peak counts</summary>
+          <div id="per-lead-body"></div>
+        </details>
+      </section>
+
+      <!-- Medical Report -->
+      <section class="card" id="report-card">
+        <h2 class="card-title">Medical Report</h2>
+        <div id="report-body"></div>
+        <div id="report-empty" class="hidden alert alert-info">
+          Analysis requires at least 2 detected beats.
+        </div>
+        <div id="report-actions" class="hidden">
+          <button id="pdf-btn" class="btn-secondary">&#128196; Download PDF</button>
+        </div>
+      </section>
+
+      <!-- Ecgtizer log expander -->
+      <details id="log-details" class="details-panel">
+        <summary>ECGtizer Output</summary>
+        <pre id="log-stdout"></pre>
+        <pre id="log-stderr" class="stderr-text"></pre>
+      </details>
+
+    </div>
+  </main>
+
+  <footer>
+    <p>ECG Digitizer Viewer &mdash; Powered by ECGtizer</p>
+  </footer>
+</div>
+
+<script>(function () {
+  const dropZone = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('file-input');
+  const browseBtn = document.getElementById('browse-btn');
+  const removeBtn = document.getElementById('remove-btn');
+  const fileName = document.getElementById('file-name');
+  const fileInfo = document.getElementById('file-info');
+  const previewBox = document.getElementById('preview-box');
+  const previewImg = document.getElementById('preview-img');
+  const actionSection = document.getElementById('action-section');
+  const analyzeBtn = document.getElementById('analyze-btn');
+  const btnText = document.getElementById('btn-text');
+  const spinner = document.getElementById('spinner');
+  const alerts = document.getElementById('alerts');
+  const results = document.getElementById('results');
+  const plotImg = document.getElementById('ecg-plot');
+  const peakSummary = document.getElementById('peak-summary');
+  const peakCaption = document.getElementById('peak-caption');
+  const metricsGrid = document.getElementById('metrics-grid');
+  const perLeadDetails = document.getElementById('per-lead-details');
+  const perLeadBody = document.getElementById('per-lead-body');
+  const reportBody = document.getElementById('report-body');
+  const reportEmpty = document.getElementById('report-empty');
+  const reportActions = document.getElementById('report-actions');
+  const pdfBtn = document.getElementById('pdf-btn');
+  const logStdout = document.getElementById('log-stdout');
+  const logStderr = document.getElementById('log-stderr');
+
+  const API_BASE = "http://127.0.0.1:8000";
+  let selectedFile = null;
+  let analysisData = null;
+
+  // --- File handling ---
+  function openFilePicker() { fileInput.click(); }
+  browseBtn.addEventListener('click', openFilePicker);
+  dropZone.addEventListener('click', function (e) {
+    if (e.target.closest('button')) return;
+    openFilePicker();
+  });
+
+  dropZone.addEventListener('dragover', function (e) { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', function () { dropZone.classList.remove('dragover'); });
+  dropZone.addEventListener('drop', function (e) {
+    e.preventDefault(); dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length > 0) setFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', function () {
+    if (fileInput.files.length > 0) setFile(fileInput.files[0]);
+  });
+  removeBtn.addEventListener('click', function (e) { e.stopPropagation(); clearFile(); });
+
+  function setFile(file) {
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    if (!['.png', '.jpg', '.jpeg', '.pdf'].includes(ext)) {
+      showToast('Unsupported file type. Use PNG, JPG, or PDF.', 'error');
+      return;
+    }
+    selectedFile = file;
+    fileName.textContent = file.name;
+    fileInfo.classList.remove('hidden');
+    if (file.type.startsWith('image/')) {
+      const r = new FileReader();
+      r.onload = function (e) { previewImg.src = e.target.result; previewBox.classList.remove('hidden'); };
+      r.readAsDataURL(file);
+    } else {
+      previewBox.classList.add('hidden');
+    }
+    actionSection.classList.remove('hidden');
+    analyzeBtn.disabled = false;
+    clearResults();
+  }
+
+  function clearFile() {
+    selectedFile = null;
+    fileInput.value = '';
+    fileInfo.classList.add('hidden');
+    previewBox.classList.add('hidden');
+    actionSection.classList.add('hidden');
+    analyzeBtn.disabled = true;
+    clearResults();
+  }
+
+  function clearResults() {
+    analysisData = null;
+    results.classList.add('hidden');
+    alerts.innerHTML = '';
+  }
+
+  // --- Analyze ---
+  analyzeBtn.addEventListener('click', runAnalysis);
+
+  async function runAnalysis() {
+    if (!selectedFile) return;
+    analyzeBtn.disabled = true;
+    btnText.textContent = 'Analyzing...';
+    spinner.classList.remove('hidden');
+    alerts.innerHTML = '';
+    results.classList.add('hidden');
+
+    const fd = new FormData();
+    fd.append('file', selectedFile);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/analyze`, { method: 'POST', body: fd });
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error('Response status:', res.status, 'Response text:', text);
+        showAlert('error', 'Server Error', 'Server returned non-JSON response. Check console for details.');
+        return;
+      }
+
+      if (data.error) {
+        showAlert('error', 'Error', data.error);
+        if (data.ecgtizer_output) showLog(data);
+        return;
+      }
+
+      analysisData = data;
+      renderResults(data);
+
+    } catch (err) {
+      showAlert('error', 'Request Failed', err.message || 'Connection error.');
+    } finally {
+      analyzeBtn.disabled = false;
+      btnText.textContent = 'Analyze ECG';
+      spinner.classList.add('hidden');
+    }
+  }
+
+  // --- Render ---
+  function renderResults(d) {
+    results.classList.remove('hidden');
+    showAlert('success', '', `Extracted ${d.n_leads} leads (${d.n_samples} samples, dt = ${d.dt_ms} ms)`);
+
+    // Plot
+    if (d.plot_base64) {
+      plotImg.src = 'data:image/png;base64,' + d.plot_base64;
+    }
+
+    // Peak summary
+    renderPeakSummary(d);
+
+    // Metrics
+    renderMetrics(d);
+
+    // Per-lead
+    renderPerLead(d);
+
+    // Report
+    renderReport(d);
+
+    // Log
+    if (d.ecgtizer_output) showLog(d);
+  }
+
+  function renderPeakSummary(d) {
+    const hr = d.heart_rate;
+    const nb = d.n_beats;
+    let html = '';
+    if (hr != null) {
+      html = `R-peaks: <strong>${nb}</strong> &mdash; HR: <strong>${hr.toFixed(1)} bpm</strong>`;
+      if (d.mean_rr_ms != null) html += ` &mdash; Mean RR: <strong>${d.mean_rr_ms.toFixed(1)} ms</strong>`;
+      if (d.sdnn_ms != null) html += ` &mdash; SDNN: <strong>${d.sdnn_ms.toFixed(1)} ms</strong>`;
+      if (d.qrs_mean != null) html += ` &mdash; QRS: <strong>${d.qrs_mean.toFixed(1)} ms</strong>`;
+      if (d.pr_mean != null) html += ` &mdash; PR: <strong>${d.pr_mean.toFixed(1)} ms</strong>`;
+      if (d.qt_mean != null) html += ` &mdash; QT: <strong>${d.qt_mean.toFixed(1)} ms</strong>`;
+      if (d.qtc_mean != null) html += ` &mdash; QTc: <strong>${d.qtc_mean.toFixed(1)} ms</strong>`;
+      if (d.axis_deg != null) {
+        html += ` &mdash; Axis: <strong>${d.axis_deg.toFixed(1)}&deg;</strong> (${d.axis_class})`;
+        html += ` &mdash; I=${d.net_i} aVF=${d.net_avf} &micro;V`;
+        html += ` &mdash; Conf: <strong>${d.confidence}%</strong>`;
+      }
+    } else {
+      html = `R-peaks: <strong>${nb}</strong> (insufficient for heart rate)`;
+    }
+    peakSummary.innerHTML = html;
+
+    peakCaption.textContent = d.fallback
+      ? `(Reference lead: ${d.ref_lead})`
+      : '(Reference lead: II, polarity-aware, adaptive threshold, QRS clustering, P/T suppression, 220ms refractory)';
+  }
+
+  function renderMetrics(d) {
+    const items = [
+      { label: 'Heart Rate', value: d.heart_rate != null ? d.heart_rate.toFixed(1) + ' bpm' : 'N/A' },
+      { label: 'R-peaks', value: String(d.n_beats) },
+      { label: 'Mean RR', value: d.mean_rr_ms != null ? d.mean_rr_ms.toFixed(1) + ' ms' : 'N/A' },
+      { label: 'SDNN', value: d.sdnn_ms != null ? d.sdnn_ms.toFixed(1) + ' ms' : 'N/A' },
+      { label: 'PR', value: d.pr_mean != null ? d.pr_mean.toFixed(1) + ' ms' : 'N/A' },
+      { label: 'QRS', value: d.qrs_mean != null ? d.qrs_mean.toFixed(1) + ' ms' : 'N/A' },
+      { label: 'QT', value: d.qt_mean != null ? d.qt_mean.toFixed(1) + ' ms' : 'N/A' },
+      { label: 'QTc (Bazett)', value: d.qtc_mean != null ? d.qtc_mean.toFixed(1) + ' ms' : 'N/A' },
+      { label: 'QRS Axis', value: d.axis_deg != null ? d.axis_deg.toFixed(1) + '\u00b0' : 'N/A' },
+      { label: 'Confidence', value: d.confidence != null ? d.confidence + '%' : 'N/A' },
+    ];
+    metricsGrid.innerHTML = items.map(m =>
+      `<div class="metric-card"><p class="metric-label">${m.label}</p><p class="metric-value">${m.value}</p></div>`
+    ).join('');
+  }
+
+  function renderPerLead(d) {
+    if (!d.per_lead || Object.keys(d.per_lead).length === 0) {
+      perLeadDetails.classList.add('hidden');
+      return;
+    }
+    perLeadDetails.classList.remove('hidden');
+    let html = '<table class="lead-table"><thead><tr><th>Lead</th><th>R-peaks</th><th>QRS (ms)</th><th>PR (ms)</th><th>QT (ms)</th></tr></thead><tbody>';
+    for (const lbl in d.per_lead) {
+      const l = d.per_lead[lbl];
+      html += `<tr><td><strong>${l.label}</strong></td><td>${l.n_beats}</td><td>${l.qrs_ms != null ? l.qrs_ms.toFixed(1) : '\u2014'}</td><td>${l.pr_ms != null ? l.pr_ms.toFixed(1) : '\u2014'}</td><td>${l.qt_ms != null ? l.qt_ms.toFixed(1) : '\u2014'}</td></tr>`;
+    }
+    html += '</tbody></table>';
+    perLeadBody.innerHTML = html;
+  }
+
+  function renderReport(d) {
+    if (d.report_text) {
+      reportBody.innerHTML = mdToHtml(d.report_text);
+      reportEmpty.classList.add('hidden');
+      reportActions.classList.remove('hidden');
+      pdfBtn.onclick = function () { downloadPdf(d); };
+    } else {
+      reportBody.innerHTML = '';
+      reportEmpty.classList.remove('hidden');
+      reportActions.classList.add('hidden');
+    }
+  }
+
+  async function downloadPdf(d) {
+    const params = {
+      heart_rate: d.heart_rate, n_beats: d.n_beats, mean_rr_ms: d.mean_rr_ms,
+      pr_ms: d.pr_mean, qrs_ms: d.qrs_mean, qt_ms: d.qt_mean, qtc_ms: d.qtc_mean,
+      axis_deg: d.axis_deg, axis_class: d.axis_class,
+      net_i: d.net_i, net_avf: d.net_avf, confidence: d.confidence,
+    };
+    try {
+      const res = await fetch(`${API_BASE}/api/report/pdf`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params),
+      });
+      if (!res.ok) { showToast('PDF generation failed', 'error'); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'ecg_medical_report.pdf';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) { showToast('PDF download failed: ' + err.message, 'error'); }
+  }
+
+  function showLog(d) {
+    if (d.ecgtizer_output) logStdout.textContent = d.ecgtizer_output;
+    if (d.ecgtizer_stderr) logStderr.textContent = d.ecgtizer_stderr;
+    document.getElementById('log-details').classList.remove('hidden');
+  }
+
+  // --- Markdown to HTML ---
+  function mdToHtml(md) {
+    let html = ''; const lines = md.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.startsWith('|') && line.endsWith('|')) {
+        const cells = line.split('|').filter(c => c.trim() !== '');
+        const next = i + 1 < lines.length ? lines[i + 1] : '';
+        const isHeader = next.startsWith('|') && next.includes('---');
+        if (isHeader) {
+          html += '<table><thead><tr>' + cells.map(c => '<th>' + esc(c.trim()) + '</th>').join('') + '</tr></thead><tbody>';
+          let j = i + 2;
+          while (j < lines.length && lines[j].startsWith('|')) {
+            html += '<tr>' + lines[j].split('|').filter(c => c.trim() !== '').map(c => '<td>' + inlineMd(esc(c.trim())) + '</td>').join('') + '</tr>';
+            j++;
+          }
+          html += '</tbody></table>'; i = j - 1; continue;
+        }
+        html += '<table><tr>' + cells.map(c => '<td>' + inlineMd(esc(c.trim())) + '</td>').join('') + '</tr></table>'; continue;
+      }
+      if (line.startsWith('### ')) { html += '<h3>' + inlineMd(esc(line.slice(4))) + '</h3>'; continue; }
+      if (line.startsWith('## ')) { html += '<h2>' + inlineMd(esc(line.slice(3))) + '</h2>'; continue; }
+      if (line.trim() === '---') { html += '<hr>'; continue; }
+      if (line.trim().startsWith('- ')) {
+        if (!html.endsWith('</ul>\n') && !html.endsWith('</ul>')) { if (html.endsWith('\n')) html = html.slice(0, -1); html += '\n<ul>\n'; }
+        html += '<li>' + inlineMd(esc(line.trim().slice(2))) + '</li>\n';
+        if (!(i + 1 < lines.length && lines[i + 1].trim().startsWith('- '))) html += '</ul>\n';
+        continue;
+      }
+      if (line.trim() === '') { html += '\n'; continue; }
+      if (line.trim().startsWith('*') && line.trim().endsWith('*')) { html += '<p class="report-note">' + inlineMd(esc(line.trim().slice(1, -1))) + '</p>\n'; continue; }
+      html += '<p>' + inlineMd(esc(line)) + '</p>\n';
+    }
+    return html;
+  }
+
+  function inlineMd(t) {
+    return t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*(.+?)\*/g, '<em>$1</em>').replace(/`(.+?)`/g, '<code>$1</code>').replace(/µ/g, '&micro;').replace(/—/g, '&mdash;');
+  }
+
+  function esc(str) { const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
+
+  // --- Utilities ---
+  function showAlert(type, title, msg) {
+    const d = document.createElement('div'); d.className = 'alert alert-' + type;
+    d.innerHTML = title ? '<strong>' + esc(title) + '</strong> ' + esc(msg) : esc(msg);
+    alerts.appendChild(d);
+  }
+
+  function showToast(msg, type) {
+    const c = document.getElementById('toast-container') || (function () { const d = document.createElement('div'); d.id = 'toast-container'; document.body.appendChild(d); return d; })();
+    const d = document.createElement('div'); d.className = 'toast toast-' + type; d.textContent = msg;
+    c.appendChild(d); setTimeout(function () { d.remove(); }, 4000);
+  }
+})();
+</script>
+</body>
+</html>
